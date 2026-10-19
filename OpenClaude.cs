@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -19,6 +20,22 @@ class Launcher
             try { var f = Path.Combine(p.Trim(), exe); if (File.Exists(f)) return f; } catch { }
         }
         return null;
+    }
+
+    static string ExtractIcon(string dir)
+    {
+        string path = Path.Combine(dir, "OpenClaude.ico");
+        try
+        {
+            using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("OpenClaude.ico"))
+            {
+                if (s == null) return null;
+                if (!File.Exists(path) || new FileInfo(path).Length != s.Length)
+                    using (var f = File.Create(path)) s.CopyTo(f);
+            }
+            return path;
+        }
+        catch { return File.Exists(path) ? path : null; }
     }
 
     [STAThread]
@@ -41,24 +58,19 @@ class Launcher
             return;
         }
 
-        // Script de banner + execução
         string dir = Path.Combine(local, "OpenClaudeLauncher");
         Directory.CreateDirectory(dir);
+        string icon = ExtractIcon(dir);
+
         string ps1 = Path.Combine(dir, "launch.ps1");
         string script =
 @"$Host.UI.RawUI.WindowTitle = 'OpenClaude'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$e = [char]27; $d = [char]0x25CF
 Clear-Host
-Write-Host """"
-Write-Host ""  $e[38;2;255;95;87m$d $e[38;2;254;188;46m$d $e[38;2;40;200;64m$d$e[0m""
-Write-Host """"
-Write-Host ""  $e[1;38;2;230;230;240mOpenClaude$e[0m  $e[38;2;120;125;145m·  " + Model + @"  ·  1M context$e[0m""
-Write-Host ""  $e[38;2;80;84;100m" + new string('─', 44) + @"$e[0m""
-Write-Host """"
 & '" + oc.Replace("'", "''") + @"' --model " + Model + @" --permission-mode bypassPermissions
 ";
         File.WriteAllText(ps1, script, new UTF8Encoding(true));
+        File.Delete(Path.Combine(dir, "banner.ans"));
 
         string psArgs = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + ps1 + "\"";
 
@@ -97,42 +109,47 @@ Write-Host """"
         {
             string fragDir = Path.Combine(local, @"Microsoft\Windows Terminal\Fragments\OpenClaude");
             Directory.CreateDirectory(fragDir);
-            string cmdline = ("powershell.exe " + psArgs).Replace("\\", "\\\\").Replace("\"", "\\\"");
+            Func<string, string> js = s => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            string cmdline = js("powershell.exe " + psArgs);
+            string iconLine = icon != null ? @"""icon"": """ + js(icon) + @""",
+      " : "";
             string json = @"{
   ""profiles"": [
     {
       ""guid"": ""{6f1c3a52-9b7e-4c1d-8f2a-0c0de0c1a0de}"",
       ""name"": ""OpenClaude"",
       ""commandline"": """ + cmdline + @""",
+      " + iconLine + @"""startingDirectory"": ""%USERPROFILE%"",
       ""hidden"": false,
-      ""colorScheme"": ""OpenClaude Soft"",
+      ""colorScheme"": ""OpenClaude Aurora"",
       ""useAcrylic"": true,
-      ""opacity"": 82,
-      ""font"": { ""face"": ""JetBrainsMono Nerd Font, JetBrains Mono, Cascadia Code, Cascadia Mono, Consolas"", ""size"": 12, ""cellHeight"": ""1.3"" },
-      ""padding"": ""18, 14, 18, 14"",
+      ""opacity"": 78,
+      ""font"": { ""face"": ""JetBrainsMono Nerd Font, JetBrains Mono, Cascadia Code, Cascadia Mono, Consolas"", ""size"": 12, ""cellHeight"": ""1.25"" },
+      ""padding"": ""22, 16, 22, 16"",
       ""cursorShape"": ""bar"",
       ""tabTitle"": ""OpenClaude"",
+      ""tabColor"": ""#1B1726"",
       ""suppressApplicationTitle"": true,
       ""scrollbarState"": ""hidden"",
+      ""intenseTextStyle"": ""bright"",
       ""antialiasingMode"": ""cleartype""
     }
   ],
   ""schemes"": [
     {
-      ""name"": ""OpenClaude Soft"",
-      ""background"": ""#16161E"", ""foreground"": ""#D4D6E4"",
-      ""cursorColor"": ""#C0CAF5"", ""selectionBackground"": ""#33467C"",
-      ""black"": ""#1F2030"", ""red"": ""#F7768E"", ""green"": ""#9ECE6A"", ""yellow"": ""#E0AF68"",
-      ""blue"": ""#7AA2F7"", ""purple"": ""#BB9AF7"", ""cyan"": ""#7DCFFF"", ""white"": ""#C0CAF5"",
-      ""brightBlack"": ""#565F89"", ""brightRed"": ""#FF899D"", ""brightGreen"": ""#B9F27C"", ""brightYellow"": ""#FFC777"",
-      ""brightBlue"": ""#8DB0FF"", ""brightPurple"": ""#C7A9FF"", ""brightCyan"": ""#A4DAFF"", ""brightWhite"": ""#E6E8F5""
+      ""name"": ""OpenClaude Aurora"",
+      ""background"": ""#13111C"", ""foreground"": ""#DCDCF0"",
+      ""cursorColor"": ""#FF7AC6"", ""selectionBackground"": ""#3D2E66"",
+      ""black"": ""#1E1B2B"", ""red"": ""#FF5A7A"", ""green"": ""#8CE99A"", ""yellow"": ""#FFB86B"",
+      ""blue"": ""#6E9BFF"", ""purple"": ""#B48CFF"", ""cyan"": ""#7FDBFF"", ""white"": ""#CFD0E8"",
+      ""brightBlack"": ""#5E5A7A"", ""brightRed"": ""#FF7A93"", ""brightGreen"": ""#A8F5B4"", ""brightYellow"": ""#FFCB8E"",
+      ""brightBlue"": ""#8FB3FF"", ""brightPurple"": ""#C9A8FF"", ""brightCyan"": ""#A3E7FF"", ""brightWhite"": ""#F2F2FF""
     }
   ]
 }";
             File.WriteAllText(Path.Combine(fragDir, "openclaude.json"), json, new UTF8Encoding(false));
             Thread.Sleep(400);
-            // usa -p com fallback para o commandline direto, caso o fragmento ainda não tenha sido carregado
-            Process.Start(new ProcessStartInfo(wt, "-p \"OpenClaude\" --title OpenClaude") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(wt, "--size 112,36 -p \"OpenClaude\" --title OpenClaude") { UseShellExecute = true });
         }
         else
         {
